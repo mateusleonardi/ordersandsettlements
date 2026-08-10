@@ -1,0 +1,99 @@
+{
+  "common": {
+    "appName": "Orders & Settlements",
+    "loading": "Loading..."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "newOrder": "New order",
+    "logout": "Sign out"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "passwordHint": "At least 8 characters",
+    "signInTitle": "Sign in",
+    "signUpTitle": "Create your account",
+    "signInCta": "Sign in",
+    "signUpCta": "Sign up",
+    "noAccount": "No account yet?",
+    "haveAccount": "Already have an account?",
+    "signUpLink": "Sign up",
+    "signInLink": "Sign in"
+  },
+  "status": {
+    "pending": "Pending",
+    "partially_paid": "Partially paid",
+    "paid": "Paid",
+    "overdue": "Overdue"
+  },
+  "dashboard": {
+    "title": "Orders",
+    "filterLabel": "Status",
+    "all": "All",
+    "customer": "Customer",
+    "status": "Status",
+    "total": "Total",
+    "paid": "Paid",
+    "due": "Due",
+    "dueDate": "Due date",
+    "empty": "No orders yet. Create your first one.",
+    "emptyFiltered": "No orders with this status.",
+    "exportCsv": "Export CSV",
+    "newOrder": "New order"
+  },
+  "orderForm": {
+    "title": "New order",
+    "customer": "Customer",
+    "currency": "Currency",
+    "dueDate": "Due date",
+    "lineItems": "Line items",
+    "description": "Description",
+    "quantity": "Qty",
+    "unitPrice": "Unit price",
+    "addLine": "Add line",
+    "remove": "Remove",
+    "create": "Create order",
+    "creating": "Creating...",
+    "previewTotal": "Total"
+  },
+  "orderDetail": {
+    "back": "Back to orders",
+    "lineItems": "Line items",
+    "subtotal": "Subtotal",
+    "total": "Total",
+    "amountPaid": "Amount paid",
+    "amountDue": "Amount due",
+    "payments": "Payments",
+    "noPayments": "No payments recorded yet.",
+    "payment": "Payment",
+    "refund": "Refund",
+    "recordPayment": "Record payment",
+    "recordRefund": "Record refund",
+    "amount": "Amount",
+    "date": "Date",
+    "note": "Note (optional)",
+    "submitting": "Saving...",
+    "audit": "Activity log",
+    "deleteOrder": "Delete order",
+    "confirmDelete": "Delete this order?",
+    "readOnly": "This order has payments recorded and is read-only."
+  },
+  "audit": {
+    "order_created": "Order created",
+    "order_updated": "Order updated",
+    "order_deleted": "Order deleted",
+    "payment_recorded": "Payment recorded",
+    "refund_recorded": "Refund recorded"
+  },
+  "errors": {
+    "OVERPAYMENT": "Payment exceeds the amount due. Maximum allowed: {maxAllowed} {currency}",
+    "REFUND_EXCEEDS_PAID": "Refund exceeds the net paid amount. Maximum refundable: {maxRefundable} {currency}",
+    "ORDER_NOT_EDITABLE": "This order has payments recorded and can no longer be changed",
+    "EMAIL_TAKEN": "An account with this email already exists",
+    "INVALID_CREDENTIALS": "Invalid email or password",
+    "UNAUTHORIZED": "Please sign in to continue",
+    "NOT_FOUND": "Not found",
+    "generic": "Something went wrong. Please try again."
+  }
+}

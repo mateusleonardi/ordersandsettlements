@@ -1,0 +1,99 @@
+{
+  "common": {
+    "appName": "Orders & Settlements",
+    "loading": "Cargando..."
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "newOrder": "Nuevo pedido",
+    "logout": "Cerrar sesión"
+  },
+  "auth": {
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "passwordHint": "Mínimo 8 caracteres",
+    "signInTitle": "Iniciar sesión",
+    "signUpTitle": "Crea tu cuenta",
+    "signInCta": "Entrar",
+    "signUpCta": "Registrarse",
+    "noAccount": "¿Aún no tienes cuenta?",
+    "haveAccount": "¿Ya tienes cuenta?",
+    "signUpLink": "Regístrate",
+    "signInLink": "Inicia sesión"
+  },
+  "status": {
+    "pending": "Pendiente",
+    "partially_paid": "Pago parcial",
+    "paid": "Pagado",
+    "overdue": "Vencido"
+  },
+  "dashboard": {
+    "title": "Pedidos",
+    "filterLabel": "Estado",
+    "all": "Todos",
+    "customer": "Cliente",
+    "status": "Estado",
+    "total": "Total",
+    "paid": "Pagado",
+    "due": "Pendiente",
+    "dueDate": "Vencimiento",
+    "empty": "Aún no hay pedidos. Crea el primero.",
+    "emptyFiltered": "No hay pedidos con este estado.",
+    "exportCsv": "Exportar CSV",
+    "newOrder": "Nuevo pedido"
+  },
+  "orderForm": {
+    "title": "Nuevo pedido",
+    "customer": "Cliente",
+    "currency": "Moneda",
+    "dueDate": "Fecha de vencimiento",
+    "lineItems": "Líneas",
+    "description": "Descripción",
+    "quantity": "Cant.",
+    "unitPrice": "Precio unitario",
+    "addLine": "Añadir línea",
+    "remove": "Quitar",
+    "create": "Crear pedido",
+    "creating": "Creando...",
+    "previewTotal": "Total"
+  },
+  "orderDetail": {
+    "back": "Volver a pedidos",
+    "lineItems": "Líneas",
+    "subtotal": "Subtotal",
+    "total": "Total",
+    "amountPaid": "Importe pagado",
+    "amountDue": "Importe pendiente",
+    "payments": "Pagos",
+    "noPayments": "Aún no hay pagos registrados.",
+    "payment": "Pago",
+    "refund": "Reembolso",
+    "recordPayment": "Registrar pago",
+    "recordRefund": "Registrar reembolso",
+    "amount": "Importe",
+    "date": "Fecha",
+    "note": "Nota (opcional)",
+    "submitting": "Guardando...",
+    "audit": "Registro de actividad",
+    "deleteOrder": "Eliminar pedido",
+    "confirmDelete": "¿Eliminar este pedido?",
+    "readOnly": "Este pedido tiene pagos registrados y es de solo lectura."
+  },
+  "audit": {
+    "order_created": "Pedido creado",
+    "order_updated": "Pedido actualizado",
+    "order_deleted": "Pedido eliminado",
+    "payment_recorded": "Pago registrado",
+    "refund_recorded": "Reembolso registrado"
+  },
+  "errors": {
+    "OVERPAYMENT": "El pago supera el importe pendiente. Máximo permitido: {maxAllowed} {currency}",
+    "REFUND_EXCEEDS_PAID": "El reembolso supera el importe neto pagado. Máximo reembolsable: {maxRefundable} {currency}",
+    "ORDER_NOT_EDITABLE": "Este pedido tiene pagos registrados y ya no se puede modificar",
+    "EMAIL_TAKEN": "Ya existe una cuenta con este correo",
+    "INVALID_CREDENTIALS": "Correo o contraseña incorrectos",
+    "UNAUTHORIZED": "Inicia sesión para continuar",
+    "NOT_FOUND": "No encontrado",
+    "generic": "Algo salió mal. Inténtalo de nuevo."
+  }
+}
