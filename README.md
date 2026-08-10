@@ -94,6 +94,7 @@ The invariant is `0 <= net paid <= order total`, where net paid = payments − r
 - Over-payments are rejected with **409 `OVERPAYMENT`** including `details.maxAllowed`, and refunds beyond net paid with **409 `REFUND_EXCEEDS_PAID`** including `details.maxRefundable`, so clients can tell the user exactly what would succeed.
 - Payments and refunds are **immutable** (no edit/delete): corrections are modeled as refunds, which keeps the history audit-friendly.
 - Every mutation writes an **audit log** entry, including derived status before/after.
+- The UI only offers actions the API would accept (no refund before any money is paid, no payment once settled), but the API remains the enforcer: a stale UI still gets the same 409s.
 
 ### Concurrency
 
@@ -133,10 +134,13 @@ UI is fully translated via next-intl with **en-US default and es-ES included**; 
 - The dashboard lists all of a user's orders without pagination; fine for assignment-scale data, noted below for production.
 - Order editing after creation exists in the API (PATCH, while unpaid); the UI exposes create/delete and treats edit as API-level scope. Deletion follows the same rule as editing: only while the order has no payments or refunds.
 - Seeding goes through the public API on purpose (works against any environment, exercises real validation); re-running it is a no-op.
+- Sessions last a fixed 7 days (no sliding renewal); logout revokes server-side. The locale cookie is a plain preference cookie (not httpOnly) by design.
+- API error messages are English by contract; the UI translates known business-rule codes client-side and interpolates their structured details. Zod field-level validation messages surface as-is (full localization of those is listed under improvements).
+- Schema changes to persisted fields ship with one-off, idempotent migration scripts under `scripts/migrations/` (run: `node --env-file=.env.local scripts/migrations/<file>`); the `entryCount` rename there was applied against the production database. A recorded, ordered migration runner is a pre-production improvement.
 
 ## Data model and indexing at scale
 
-Collections: `users`, `sessions` (TTL-expired), `orders` (line items embedded; denormalized `netPaidMinor` + `paymentCount`), `payments`, `audit_logs`. Indexes are created in code (`src/lib/db.ts`): unique email, session token + TTL, `(userId, createdAt)` and `(userId, dueDate)` on orders, `(orderId, createdAt)` on payments, and the unique partial idempotency index.
+Collections: `users`, `sessions` (TTL-expired), `orders` (line items embedded; denormalized `netPaidMinor` + `entryCount`), `payments`, `audit_logs`. Indexes are created in code (`src/lib/db.ts`): unique email, session token + TTL, `(userId, createdAt)` and `(userId, dueDate)` on orders, `(orderId, createdAt)` on payments, and the unique partial idempotency index.
 
 At scale, the derived-status filter would move into the query itself: `paid`/`partially_paid`/`pending` are expressible as range conditions over `(netPaidMinor, totalMinor)`, and `overdue` as `dueDate < today AND netPaidMinor < totalMinor`, backed by a compound index, with pagination on `(userId, createdAt)`.
 
@@ -145,11 +149,12 @@ At scale, the derived-status filter would move into the query itself: `paid`/`pa
 - **Unit** (`tests/unit`): money parsing/formatting per currency, full status-derivation matrix including refund regressions and the UTC overdue boundary.
 - **API integration** (`tests/integration`): route handlers called as functions against a real in-memory Mongo replica set. Covers the assignment's sample scenario (1000 → 400 → 600 → reject 1), over-payment errors with `maxAllowed`, **concurrent payments** (two 600s; eight parallel 100s stop exactly at 500), idempotency replay and race, tenant isolation (list/detail/pay/delete), immutability after payment, refund rules, audit trail, CSV export.
 - **E2E** (`e2e/`): full browser journey (signup → create order → partial payment → over-payment error → settle → refund), dashboard status filter, language switcher. Self-contained via `scripts/e2e-server.mjs`.
+- Deliberately untested: session TTL expiry (a MongoDB TTL-index feature; testing it would need clock control for marginal value) and the static security headers (Next config).
 
 ## What I would improve before production
 
 - **Security**: rate limiting and lockout on auth endpoints, password reset + email verification, token-based CSRF (today: SameSite=Lax plus an Origin-header check on mutating requests), a full CSP on top of the basic security headers already set, session rotation on privilege changes.
-- **Operations**: structured logging with request/trace ids, metrics on payment outcomes (accepted/over-payment/idempotent-replay), alerting, backups and restore drills for Atlas.
+- **Operations**: structured logging with request/trace ids, metrics on payment outcomes (accepted/over-payment/idempotent-replay), alerting, backups and restore drills for Atlas, and a proper migration runner (ordered, recorded) instead of one-off scripts.
 - **Product/API**: pagination and search on orders, order editing UI, computed status filtering in the query layer (above), customer as an entity, configurable currency list, webhooks for payment events, CSV export streaming for large ranges.
 - **Data**: move audit logs to an append-only pattern with stricter write paths; consider a `settlements` read model if reporting grows.
 
@@ -174,5 +179,6 @@ src/
   i18n/          # next-intl config + en-US / es-ES messages
 tests/           # unit + API integration (in-memory Mongo replica set)
 e2e/             # Playwright journeys
-scripts/         # seed (via public API) and e2e server harness
+scripts/         # seed (via public API), in-memory server harnesses (dev/e2e),
+                 # one-off data migrations (migrations/, run with node --env-file)
 ```

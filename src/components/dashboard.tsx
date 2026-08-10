@@ -6,10 +6,10 @@ import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ApiError, api } from "@/lib/client-api";
 import { useApiErrorMessage } from "./errors";
-import { FormError } from "./ui";
 import type { OrderDto } from "@/lib/orders";
 import { ORDER_STATUSES, type OrderStatus } from "@/domain/status";
 import {
+  FormError,
   Money,
   StatusBadge,
   buttonClass,

@@ -72,6 +72,7 @@
     "recordRefund": "Registrar reembolso",
     "amount": "Importe",
     "date": "Fecha",
+    "dueDate": "Fecha de vencimiento",
     "note": "Nota (opcional)",
     "submitting": "Guardando...",
     "audit": "Registro de actividad",

@@ -491,11 +491,8 @@ async function recordEntry(
 
   const amountMinor = parseAmount(input.amount, order.currency);
   if (amountMinor <= 0) {
-    throw new DomainError(
-      "VALIDATION_ERROR",
-      "Amount must be at least 0.01",
-      400,
-    );
+    // Currency-neutral: the minimum is one minor unit (0.01 USD, 1 JPY).
+    throw new DomainError("VALIDATION_ERROR", "Amount must be positive", 400);
   }
 
   const expected = { amountMinor, date: input.date, note: input.note };

@@ -174,7 +174,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
         ))}
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            {t("date")}
+            {t("dueDate")}
           </p>
           <p className="mt-1 text-lg font-semibold">{order.dueDate}</p>
         </div>

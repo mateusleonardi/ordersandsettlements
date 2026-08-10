@@ -72,6 +72,7 @@
     "recordRefund": "Record refund",
     "amount": "Amount",
     "date": "Date",
+    "dueDate": "Due date",
     "note": "Note (optional)",
     "submitting": "Saving...",
     "audit": "Activity log",
