@@ -46,7 +46,8 @@ export interface OrderDoc {
    */
   netPaidMinor: number;
   /** Number of payment/refund entries; > 0 makes the order read-only. */
-  paymentCount: number;
+  entryCount: number;
+  idempotencyKey?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -128,6 +129,14 @@ async function ensureIndexes(c: Collections): Promise<void> {
     // Every order query is tenant-scoped, so userId leads every index.
     c.orders.createIndex({ userId: 1, createdAt: -1 }),
     c.orders.createIndex({ userId: 1, dueDate: 1 }),
+    // Idempotent order creation (double click, network retry).
+    c.orders.createIndex(
+      { userId: 1, idempotencyKey: 1 },
+      {
+        unique: true,
+        partialFilterExpression: { idempotencyKey: { $exists: true } },
+      },
+    ),
     c.payments.createIndex({ orderId: 1, createdAt: 1 }),
     c.payments.createIndex({ userId: 1, createdAt: -1 }),
     // Idempotency: the same (order, type, key) can only ever produce one

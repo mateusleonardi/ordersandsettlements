@@ -101,6 +101,7 @@ export interface OrderInput {
 export async function createOrderVia(
   cookie: string,
   input: OrderInput = {},
+  idempotencyKey?: string,
 ): Promise<Response> {
   return ordersPost(
     jsonRequest(
@@ -113,7 +114,10 @@ export async function createOrderVia(
         lineItems: [{ description: "Widget", quantity: 2, unitPrice: "500" }],
         ...input,
       },
-      { cookie },
+      {
+        cookie,
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+      },
     ),
     undefined,
   );

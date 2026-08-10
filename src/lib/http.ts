@@ -23,9 +23,32 @@ export function errorResponse(
 
 type Handler<Ctx> = (req: Request, ctx: Ctx) => Promise<Response>;
 
+/**
+ * CSRF hardening on top of SameSite=Lax: mutating requests that carry a
+ * browser Origin header must match the request host. Non-browser clients
+ * (curl, tests) that send no Origin are unaffected.
+ */
+function assertSameOrigin(req: Request): void {
+  const method = req.method.toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return;
+  const origin = req.headers.get("origin");
+  const host = req.headers.get("host") ?? new URL(req.url).host;
+  if (!origin || !host) return;
+  let originHost = "";
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    // Malformed Origin: treat as cross-origin.
+  }
+  if (originHost !== host) {
+    throw new DomainError("FORBIDDEN", "Cross-origin request rejected", 403);
+  }
+}
+
 export function handle<Ctx = unknown>(fn: Handler<Ctx>): Handler<Ctx> {
   return async (req, ctx) => {
     try {
+      assertSameOrigin(req);
       return await fn(req, ctx);
     } catch (err) {
       if (err instanceof DomainError) {

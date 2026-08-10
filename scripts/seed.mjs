@@ -86,8 +86,7 @@ async function main() {
     note: "First installment (bank transfer)",
   });
 
-  // paid: settled in two installments, then partially refunded and re-paid?
-  // Keep it clean: fully paid with two payments.
+  // paid: settled in two installments.
   const paid = await api("POST", "/api/orders", {
     customer: "Dune Analytics DMCC",
     currency: "USD",

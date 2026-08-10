@@ -16,20 +16,22 @@ Create orders with line items, record full or partial payments against them, and
 
 ## Getting started
 
-Prerequisites: Node.js 22+, pnpm 10+, and a MongoDB instance (or just use the tests, which bring their own).
+Prerequisites: Node.js 22+ and pnpm 10+. No MongoDB needed for the zero-setup path:
 
 ```bash
 pnpm install
-cp .env.example .env.local   # point MONGODB_URI at your Mongo
-pnpm dev                     # http://localhost:3000
+pnpm dev:mem                 # http://localhost:3000 (disposable in-memory Mongo)
 pnpm seed                    # optional: demo account + sample orders
 ```
+
+To run against a persistent database instead, `cp .env.example .env.local`, set `MONGODB_URI`, and use `pnpm dev`. Note: payments and refunds use multi-document transactions, which MongoDB only supports on **replica sets**. Atlas (any tier) works out of the box; a plain standalone local `mongod` does not, which is exactly why `pnpm dev:mem` exists (it boots a single-node replica set in memory).
 
 Scripts:
 
 | Command | What it does |
 | --- | --- |
-| `pnpm dev` | Dev server on :3000 (needs `MONGODB_URI`) |
+| `pnpm dev:mem` | Dev server on :3000 with a disposable in-memory Mongo replica set (zero setup) |
+| `pnpm dev` | Dev server on :3000 (needs `MONGODB_URI` pointing at a replica set, e.g. Atlas) |
 | `pnpm build` / `pnpm start` | Production build / serve |
 | `pnpm test` | All Vitest suites (unit + integration) |
 | `pnpm test:unit` | Domain unit tests (money, status derivation) |
@@ -51,7 +53,7 @@ All endpoints are session-authenticated (httpOnly cookie) except signup/login. E
 | POST | `/api/auth/logout` | Sign out |
 | GET | `/api/auth/me` | Current user |
 | GET | `/api/orders?status=` | List orders, optional derived-status filter |
-| POST | `/api/orders` | Create order (customer, currency, due date, line items) |
+| POST | `/api/orders` | Create order (customer, currency, due date, line items; supports `Idempotency-Key`) |
 | GET | `/api/orders/:id` | Order detail + payment history + audit log |
 | PATCH | `/api/orders/:id` | Edit order (only while it has no payments) |
 | DELETE | `/api/orders/:id` | Delete order (only while it has no payments) |
@@ -99,7 +101,7 @@ Two payments submitted at the same time must not exceed the total. The payment w
 
 ### Idempotency
 
-Repeating an action must not create a second record (double click, F5 mid-request, network retry). Payment and refund POSTs accept an **`Idempotency-Key` header**: replaying a key returns **200 with the original payment** instead of a 201 with a duplicate. A unique partial index on `(orderId, idempotencyKey)` backs this against races; the UI sends a fresh key per payment intent and reuses it across retries.
+Repeating an action must not create a second record (double click, F5 mid-request, network retry). Order, payment and refund POSTs accept an **`Idempotency-Key` header**: replaying a key returns **200 with the original resource** instead of a 201 with a duplicate. Unique partial indexes (`(userId, idempotencyKey)` on orders; `(orderId, type, idempotencyKey)` on payments, so a payment and a refund can never shadow each other's key) back this against races. Replaying a payment key **with different parameters** (amount, date or note) is a client bug, not a retry, and is rejected with 409 `CONFLICT`. The UI sends a fresh key per intent and reuses it across retries of the same submit.
 
 ### Order lifecycle
 
@@ -140,7 +142,7 @@ At scale, the derived-status filter would move into the query itself: `paid`/`pa
 
 ## What I would improve before production
 
-- **Security**: rate limiting and lockout on auth endpoints, password reset + email verification, CSRF tokens (SameSite=Lax mitigates but is not a substitute), security headers/CSP, session rotation on privilege changes.
+- **Security**: rate limiting and lockout on auth endpoints, password reset + email verification, token-based CSRF (today: SameSite=Lax plus an Origin-header check on mutating requests), a full CSP on top of the basic security headers already set, session rotation on privilege changes.
 - **Operations**: structured logging with request/trace ids, metrics on payment outcomes (accepted/over-payment/idempotent-replay), alerting, backups and restore drills for Atlas.
 - **Product/API**: pagination and search on orders, order editing UI, computed status filtering in the query layer (above), customer as an entity, configurable currency list, webhooks for payment events, CSV export streaming for large ranges.
 - **Data**: move audit logs to an append-only pattern with stricter write paths; consider a `settlements` read model if reporting grows.

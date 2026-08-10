@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
-import { api } from "@/lib/client-api";
+import { useLocale, useTranslations } from "next-intl";
+import { ApiError, api } from "@/lib/client-api";
 import type { AuditDto, OrderDto, PaymentDto } from "@/lib/orders";
 import { useApiErrorMessage } from "./errors";
 import {
@@ -31,6 +31,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
   const tc = useTranslations("common");
   const ta = useTranslations("audit");
   const ts = useTranslations("status");
+  const locale = useLocale();
   const router = useRouter();
   const errorMessage = useApiErrorMessage();
 
@@ -48,12 +49,23 @@ export function OrderDetail({ orderId }: { orderId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    void api<Detail>(`/api/orders/${orderId}`).then((data) => {
-      if (!cancelled) setDetail(data);
-    });
+    api<Detail>(`/api/orders/${orderId}`)
+      .then((data) => {
+        if (!cancelled) setDetail(data);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.code === "UNAUTHORIZED") {
+          router.push("/login");
+          return;
+        }
+        setError(errorMessage(err));
+      });
     return () => {
       cancelled = true;
     };
+    // errorMessage/router are stable enough; refetch on id/refresh change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, refreshKey]);
 
   async function submitEntry(e: React.FormEvent) {
@@ -94,7 +106,8 @@ export function OrderDetail({ orderId }: { orderId: string }) {
   if (!detail) {
     return (
       <main className="mx-auto max-w-4xl px-4 py-8">
-        <p className="text-sm text-slate-500">{tc("loading")}</p>
+        <FormError message={error} />
+        {!error && <p className="text-sm text-slate-500">{tc("loading")}</p>}
       </main>
     );
   }
@@ -284,7 +297,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
                     </span>
                   )}
                 <span className="ml-1 text-slate-400">
-                  {new Date(entry.createdAt).toLocaleString()}
+                  {new Date(entry.createdAt).toLocaleString(locale)}
                 </span>
               </li>
             ))}

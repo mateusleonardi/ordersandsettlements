@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { api } from "@/lib/client-api";
+import { ApiError, api } from "@/lib/client-api";
+import { useApiErrorMessage } from "./errors";
+import { FormError } from "./ui";
 import type { OrderDto } from "@/lib/orders";
 import { ORDER_STATUSES, type OrderStatus } from "@/domain/status";
 import {
@@ -17,18 +20,32 @@ export function Dashboard() {
   const t = useTranslations("dashboard");
   const tc = useTranslations("common");
   const ts = useTranslations("status");
+  const router = useRouter();
+  const errorMessage = useApiErrorMessage();
   const [orders, setOrders] = useState<OrderDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<OrderStatus | "">("");
 
   useEffect(() => {
     let cancelled = false;
     const query = filter ? `?status=${filter}` : "";
-    void api<{ orders: OrderDto[] }>(`/api/orders${query}`).then(({ orders }) => {
-      if (!cancelled) setOrders(orders);
-    });
+    api<{ orders: OrderDto[] }>(`/api/orders${query}`)
+      .then(({ orders }) => {
+        if (!cancelled) setOrders(orders);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.code === "UNAUTHORIZED") {
+          router.push("/login");
+          return;
+        }
+        setError(errorMessage(err));
+      });
     return () => {
       cancelled = true;
     };
+    // errorMessage/router are stable enough; refetch only on filter change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   return (
@@ -62,8 +79,9 @@ export function Dashboard() {
         </div>
       </div>
 
+      <FormError message={error} />
       {orders === null ? (
-        <p className="text-sm text-slate-500">{tc("loading")}</p>
+        !error && <p className="text-sm text-slate-500">{tc("loading")}</p>
       ) : orders.length === 0 ? (
         <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
           {filter ? t("emptyFiltered") : t("empty")}

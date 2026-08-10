@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { api } from "@/lib/client-api";
 import type { OrderDto } from "@/lib/orders";
@@ -43,6 +43,9 @@ export function OrderForm() {
   const [lines, setLines] = useState<LineDraft[]>([{ ...EMPTY_LINE }]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // One key per creation intent: retries of the same submit reuse it, so a
+  // double click or network retry cannot create two orders.
+  const idempotencyKey = useRef<string>(crypto.randomUUID());
 
   function setLine(index: number, patch: Partial<LineDraft>) {
     setLines((prev) =>
@@ -71,6 +74,7 @@ export function OrderForm() {
     try {
       const { order } = await api<{ order: OrderDto }>("/api/orders", {
         method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey.current },
         body: JSON.stringify({
           customer,
           currency,

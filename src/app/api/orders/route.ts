@@ -13,9 +13,14 @@ export const GET = handle(async (req) => {
   return json({ orders });
 });
 
+/**
+ * Creates an order. Supports an optional Idempotency-Key header: replaying
+ * the same key returns 200 with the original order instead of a duplicate.
+ */
 export const POST = handle(async (req) => {
   const user = await requireUser(req);
   const input = createOrderSchema.parse(await readJson(req));
-  const order = await createOrder(user, input);
-  return json({ order }, 201);
+  const idempotencyKey = req.headers.get("idempotency-key") ?? undefined;
+  const result = await createOrder(user, input, idempotencyKey);
+  return json({ order: result.order }, result.idempotent ? 200 : 201);
 });

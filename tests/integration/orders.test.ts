@@ -46,6 +46,45 @@ describe("auth", () => {
     expect((await readBody<ErrorBody>(second)).error.code).toBe("EMAIL_TAKEN");
   });
 
+  it("identifies the session on /api/auth/me and rejects anonymous calls", async () => {
+    const { GET: meRoute } = await import("../../src/app/api/auth/me/route");
+    const { cookie, email } = await signupUser();
+    const ok = await meRoute(
+      jsonRequest("GET", "/api/auth/me", undefined, { cookie }),
+      undefined,
+    );
+    expect(ok.status).toBe(200);
+    const body = await readBody<{ user: { email: string } }>(ok);
+    expect(body.user.email).toBe(email);
+
+    const anon = await meRoute(jsonRequest("GET", "/api/auth/me"), undefined);
+    expect(anon.status).toBe(401);
+  });
+
+  it("rejects cross-origin mutating requests when Origin mismatches", async () => {
+    const { cookie } = await signupUser();
+    const res = await createOrderVia(cookie, {});
+    expect(res.status).toBe(201);
+
+    const { POST: ordersPost } = await import("../../src/app/api/orders/route");
+    const crossOrigin = await ordersPost(
+      jsonRequest(
+        "POST",
+        "/api/orders",
+        {
+          customer: "Evil Co",
+          currency: "USD",
+          dueDate: "2030-01-01",
+          lineItems: [{ description: "W", quantity: 1, unitPrice: "10" }],
+        },
+        { cookie, origin: "https://evil.test", host: "app.local" },
+      ),
+      undefined,
+    );
+    expect(crossOrigin.status).toBe(403);
+    expect((await readBody<ErrorBody>(crossOrigin)).error.code).toBe("FORBIDDEN");
+  });
+
   it("rejects wrong credentials with 401", async () => {
     const { POST: loginRoute } = await import("../../src/app/api/auth/login/route");
     const res = await loginRoute(
@@ -297,6 +336,39 @@ describe("idempotency", () => {
     expect(replayBody.payment.id).toBe(firstBody.payment.id);
     // Net paid did not double.
     expect(replayBody.order.amountPaid).toBe("400.00");
+  });
+
+  it("replaying an order-creation key returns the original order", async () => {
+    const { cookie } = await signupUser();
+    const key = "create-once";
+    const first = await createOrderVia(cookie, undefined, key);
+    expect(first.status).toBe(201);
+    const firstBody = await readBody<{ order: OrderDto }>(first);
+
+    const replay = await createOrderVia(cookie, undefined, key);
+    expect(replay.status).toBe(200);
+    const replayBody = await readBody<{ order: OrderDto }>(replay);
+    expect(replayBody.order.id).toBe(firstBody.order.id);
+
+    const list = await routes.ordersGet(
+      jsonRequest("GET", "/api/orders", undefined, { cookie }),
+      undefined,
+    );
+    expect((await readBody<{ orders: OrderDto[] }>(list)).orders).toHaveLength(1);
+  });
+
+  it("rejects a payment key replayed with different parameters", async () => {
+    const { cookie } = await signupUser();
+    const created = await createOrderVia(cookie);
+    const { order } = await readBody<{ order: OrderDto }>(created);
+
+    const key = "same-key-different-amount";
+    const first = await payVia(cookie, order.id, "100", { idempotencyKey: key });
+    expect(first.status).toBe(201);
+
+    const mismatch = await payVia(cookie, order.id, "200", { idempotencyKey: key });
+    expect(mismatch.status).toBe(409);
+    expect((await readBody<ErrorBody>(mismatch)).error.code).toBe("CONFLICT");
   });
 
   it("keeps payment and refund idempotency keys independent", async () => {

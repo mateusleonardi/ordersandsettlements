@@ -46,7 +46,7 @@ export interface OrderDto {
   total: string;
   amountPaid: string;
   amountDue: string;
-  paymentCount: number;
+  entryCount: number;
   editable: boolean;
   createdAt: string;
   updatedAt: string;
@@ -94,8 +94,8 @@ export function orderToDto(order: OrderDoc, now = new Date()): OrderDto {
     total: minorToDecimal(order.totalMinor, c),
     amountPaid: minorToDecimal(order.netPaidMinor, c),
     amountDue: minorToDecimal(order.totalMinor - order.netPaidMinor, c),
-    paymentCount: order.paymentCount,
-    editable: order.paymentCount === 0,
+    entryCount: order.entryCount,
+    editable: order.entryCount === 0,
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),
   };
@@ -158,7 +158,7 @@ function buildLineItems(
       400,
     );
   }
-  if (!Number.isSafeInteger(subtotalMinor)) {
+  if (!Number.isSafeInteger(subtotalMinor) || subtotalMinor > MAX_MINOR_UNITS) {
     throw new DomainError("VALIDATION_ERROR", "Order total is too large", 400);
   }
   return { lineItems, subtotalMinor };
@@ -195,10 +195,22 @@ async function insertAudit(
 export async function createOrder(
   user: UserDoc,
   input: CreateOrderInput,
-): Promise<OrderDto> {
-  const { collections } = await getMongo();
+  idempotencyKey?: string,
+): Promise<{ order: OrderDto; idempotent: boolean }> {
+  const { client, collections } = await getMongo();
   const currency = input.currency as CurrencyCode;
   const { lineItems, subtotalMinor } = buildLineItems(input.lineItems, currency);
+
+  // Idempotent creation: replaying the same key returns the original order
+  // instead of creating a duplicate (double click, network retry).
+  if (idempotencyKey) {
+    const existing = await collections.orders.findOne({
+      userId: user._id,
+      idempotencyKey,
+    });
+    if (existing) return { order: orderToDto(existing), idempotent: true };
+  }
+
   const now = new Date();
   const order: OrderDoc = {
     _id: new ObjectId(),
@@ -211,19 +223,40 @@ export async function createOrder(
     // No order-level tax or discount in this assignment: total == subtotal.
     totalMinor: subtotalMinor,
     netPaidMinor: 0,
-    paymentCount: 0,
+    entryCount: 0,
+    ...(idempotencyKey ? { idempotencyKey } : {}),
     createdAt: now,
     updatedAt: now,
   };
-  await collections.orders.insertOne(order);
-  await insertAudit({
-    userId: user._id,
-    orderId: order._id,
-    event: "order_created",
-    statusAfter: statusOf(order, now),
-    data: { total: minorToDecimal(subtotalMinor, currency), currency },
-  });
-  return orderToDto(order, now);
+  const session = client.startSession();
+  try {
+    await session.withTransaction(async () => {
+      await collections.orders.insertOne(order, { session });
+      await insertAudit(
+        {
+          userId: user._id,
+          orderId: order._id,
+          event: "order_created",
+          statusAfter: statusOf(order, now),
+          data: { total: minorToDecimal(subtotalMinor, currency), currency },
+        },
+        session,
+      );
+    });
+  } catch (err) {
+    if (isDuplicateKey(err) && idempotencyKey) {
+      // Lost an idempotency race: another request with the same key won.
+      const existing = await collections.orders.findOne({
+        userId: user._id,
+        idempotencyKey,
+      });
+      if (existing) return { order: orderToDto(existing), idempotent: true };
+    }
+    throw err;
+  } finally {
+    await session.endSession();
+  }
+  return { order: orderToDto(order, now), idempotent: false };
 }
 
 export async function listOrders(
@@ -281,19 +314,19 @@ export async function updateOrder(
   id: string,
   input: UpdateOrderInput,
 ): Promise<OrderDto> {
-  const { collections } = await getMongo();
+  const { client, collections } = await getMongo();
   const orderId = parseOrderId(id);
   const existing = await collections.orders.findOne({
     _id: orderId,
     userId: user._id,
   });
   if (!existing) throw notFound("Order");
-  if (existing.paymentCount > 0) {
+  if (existing.entryCount > 0) {
     throw new DomainError(
       "ORDER_NOT_EDITABLE",
       "This order has payments recorded and can no longer be edited",
       409,
-      { paymentCount: existing.paymentCount },
+      { entryCount: existing.entryCount },
     );
   }
 
@@ -310,13 +343,33 @@ export async function updateOrder(
     update.totalMinor = subtotalMinor;
   }
 
-  // paymentCount in the filter re-checks editability atomically: a payment
+  // entryCount in the filter re-checks editability atomically: a payment
   // landing between the read above and this write cannot be overwritten.
-  const updated = await collections.orders.findOneAndUpdate(
-    { _id: orderId, userId: user._id, paymentCount: 0 },
-    { $set: update },
-    { returnDocument: "after" },
-  );
+  // The audit entry commits in the same transaction as the update.
+  let updated: OrderDoc | null = null;
+  const session = client.startSession();
+  try {
+    await session.withTransaction(async () => {
+      updated = null; // reset: withTransaction may retry the callback
+      updated = await collections.orders.findOneAndUpdate(
+        { _id: orderId, userId: user._id, entryCount: 0 },
+        { $set: update },
+        { returnDocument: "after", session },
+      );
+      if (!updated) return;
+      await insertAudit(
+        {
+          userId: user._id,
+          orderId,
+          event: "order_updated",
+          data: { fields: Object.keys(input) },
+        },
+        session,
+      );
+    });
+  } finally {
+    await session.endSession();
+  }
   if (!updated) {
     throw new DomainError(
       "ORDER_NOT_EDITABLE",
@@ -324,49 +377,56 @@ export async function updateOrder(
       409,
     );
   }
-  await insertAudit({
-    userId: user._id,
-    orderId,
-    event: "order_updated",
-    data: { fields: Object.keys(input) },
-  });
   return orderToDto(updated);
 }
 
 export async function deleteOrder(user: UserDoc, id: string): Promise<void> {
-  const { collections } = await getMongo();
+  const { client, collections } = await getMongo();
   const orderId = parseOrderId(id);
   const existing = await collections.orders.findOne({
     _id: orderId,
     userId: user._id,
   });
   if (!existing) throw notFound("Order");
-  if (existing.paymentCount > 0) {
+  if (existing.entryCount > 0) {
     throw new DomainError(
       "ORDER_NOT_EDITABLE",
       "This order has payments recorded and cannot be deleted",
       409,
-      { paymentCount: existing.paymentCount },
+      { entryCount: existing.entryCount },
     );
   }
-  const result = await collections.orders.deleteOne({
-    _id: orderId,
-    userId: user._id,
-    paymentCount: 0,
-  });
-  if (result.deletedCount === 0) {
+  let deleted = false;
+  const session = client.startSession();
+  try {
+    await session.withTransaction(async () => {
+      deleted = false; // reset: withTransaction may retry the callback
+      const result = await collections.orders.deleteOne(
+        { _id: orderId, userId: user._id, entryCount: 0 },
+        { session },
+      );
+      if (result.deletedCount === 0) return;
+      deleted = true;
+      await insertAudit(
+        {
+          userId: user._id,
+          orderId,
+          event: "order_deleted",
+          data: { customer: existing.customer },
+        },
+        session,
+      );
+    });
+  } finally {
+    await session.endSession();
+  }
+  if (!deleted) {
     throw new DomainError(
       "ORDER_NOT_EDITABLE",
       "This order has payments recorded and cannot be deleted",
       409,
     );
   }
-  await insertAudit({
-    userId: user._id,
-    orderId,
-    event: "order_deleted",
-    data: { customer: existing.customer },
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -438,6 +498,7 @@ async function recordEntry(
     );
   }
 
+  const expected = { amountMinor, date: input.date, note: input.note };
   if (idempotencyKey) {
     const existing = await findByIdempotencyKey(
       collections,
@@ -445,6 +506,7 @@ async function recordEntry(
       orderId,
       type,
       idempotencyKey,
+      expected,
     );
     if (existing) return existing;
   }
@@ -475,10 +537,11 @@ async function recordEntry(
   const session = client.startSession();
   try {
     await session.withTransaction(async () => {
+      updatedOrder = null; // reset: withTransaction may retry the callback
       updatedOrder = await collections.orders.findOneAndUpdate(
         { _id: orderId, userId: user._id, $expr: guard },
         {
-          $inc: { netPaidMinor: delta, paymentCount: 1 },
+          $inc: { netPaidMinor: delta, entryCount: 1 },
           $set: { updatedAt: now },
         },
         { returnDocument: "after", session },
@@ -516,6 +579,7 @@ async function recordEntry(
         orderId,
         type,
         idempotencyKey,
+        expected,
       );
       if (existing) return existing;
     }
@@ -575,6 +639,7 @@ async function findByIdempotencyKey(
   orderId: ObjectId,
   type: "payment" | "refund",
   idempotencyKey: string,
+  expected: { amountMinor: number; date: string; note?: string },
 ): Promise<RecordPaymentResult | null> {
   const existing = await collections.payments.findOne({
     orderId,
@@ -583,6 +648,21 @@ async function findByIdempotencyKey(
     idempotencyKey,
   });
   if (!existing) return null;
+  // A replay must carry the same parameters as the original request;
+  // reusing a key with a different amount/date/note is a client bug, not a
+  // retry, and silently returning the original would hide it.
+  if (
+    existing.amountMinor !== expected.amountMinor ||
+    existing.date !== expected.date ||
+    (existing.note ?? "") !== (expected.note ?? "")
+  ) {
+    throw new DomainError(
+      "CONFLICT",
+      "This Idempotency-Key was already used with different parameters",
+      409,
+      { idempotencyKey },
+    );
+  }
   const order = await collections.orders.findOne({ _id: orderId, userId });
   if (!order) return null;
   return {
