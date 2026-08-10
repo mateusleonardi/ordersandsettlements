@@ -33,10 +33,11 @@ test("signup, create order and settle it end to end", async ({ page }) => {
   await expect(page.getByText("$1,000.00")).toBeVisible();
   await page.getByRole("button", { name: "Create order" }).click();
 
-  // Detail page: pending, 1000 due.
+  // Detail page: pending, 1000 due. Nothing paid yet, so no refund option.
   await expect(page.getByRole("heading", { name: "Acme LLC" })).toBeVisible();
   await expect(page.locator("[data-status=pending]")).toBeVisible();
   await expect(page.locator("[data-field=amountDue]")).toHaveText("$1,000.00");
+  await expect(page.getByRole("button", { name: "Record refund" })).toHaveCount(0);
 
   // Partial payment of 400.
   await page.getByLabel(/Amount \(/).fill("400");
@@ -51,11 +52,12 @@ test("signup, create order and settle it end to end", async ({ page }) => {
   await expect(page.getByText("Maximum allowed")).toContainText("600.00");
   await expect(page.locator("[data-field=amountDue]")).toHaveText("$600.00");
 
-  // Settle the remaining 600.
+  // Settle the remaining 600. Fully paid: the payment option disappears.
   await page.getByLabel(/Amount \(/).fill("600");
   await page.getByRole("button", { name: "Record payment" }).last().click();
   await expect(page.locator("[data-status=paid]")).toBeVisible();
   await expect(page.locator("[data-field=amountDue]")).toHaveText("$0.00");
+  await expect(page.getByRole("button", { name: "Record payment" })).toHaveCount(0);
 
   // Refund 100: status regresses to partially paid.
   await page.getByRole("button", { name: "Record refund" }).first().click();

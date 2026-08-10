@@ -74,7 +74,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
     setError(null);
     setBusy(true);
     try {
-      await api(`/api/orders/${orderId}/${mode}s`, {
+      await api(`/api/orders/${orderId}/${effectiveMode}s`, {
         method: "POST",
         headers: { "Idempotency-Key": idempotencyKey.current },
         body: JSON.stringify({
@@ -114,6 +114,19 @@ export function OrderDetail({ orderId }: { orderId: string }) {
   }
 
   const { order, payments, auditLog } = detail;
+  // Only offer actions the API would accept: refunds need money already
+  // paid, payments need an outstanding balance. If the selected mode became
+  // impossible (e.g. the order was just settled), fall back to the other.
+  const canPay = Number(order.amountDue) > 0;
+  const canRefund = Number(order.amountPaid) > 0;
+  const effectiveMode =
+    mode === "refund"
+      ? canRefund
+        ? "refund"
+        : "payment"
+      : canPay
+        ? "payment"
+        : "refund";
 
   return (
     <main className="mx-auto max-w-4xl space-y-6 px-4 py-8">
@@ -192,20 +205,28 @@ export function OrderDetail({ orderId }: { orderId: string }) {
       <div className="grid gap-6 md:grid-cols-2">
         <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setMode("payment")}
-              className={mode === "payment" ? buttonClass : secondaryButtonClass}
-            >
-              {t("recordPayment")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("refund")}
-              className={mode === "refund" ? buttonClass : secondaryButtonClass}
-            >
-              {t("recordRefund")}
-            </button>
+            {canPay && (
+              <button
+                type="button"
+                onClick={() => setMode("payment")}
+                className={
+                  effectiveMode === "payment" ? buttonClass : secondaryButtonClass
+                }
+              >
+                {t("recordPayment")}
+              </button>
+            )}
+            {canRefund && (
+              <button
+                type="button"
+                onClick={() => setMode("refund")}
+                className={
+                  effectiveMode === "refund" ? buttonClass : secondaryButtonClass
+                }
+              >
+                {t("recordRefund")}
+              </button>
+            )}
           </div>
           <form onSubmit={submitEntry} className="space-y-3">
             <label className="block space-y-1">
@@ -244,7 +265,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
             <button type="submit" disabled={busy} className={`${buttonClass} w-full`}>
               {busy
                 ? t("submitting")
-                : mode === "payment"
+                : effectiveMode === "payment"
                   ? t("recordPayment")
                   : t("recordRefund")}
             </button>
