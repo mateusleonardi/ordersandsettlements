@@ -1,26 +1,15 @@
 @import "tailwindcss";
 
+/*
+ * The UI is designed light-only: colors come from Tailwind utilities in the
+ * components. color-scheme pins form controls and system surfaces to light
+ * even when the OS prefers dark, so nothing inherits invisible colors.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
