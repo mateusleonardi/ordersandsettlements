@@ -112,6 +112,10 @@ Orders are **editable and deletable only while they have no payments or refunds*
 
 Every document carries `userId` and **every query filters by it** (it leads every index). Another user's order behaves exactly like a missing one: 404, never 403, so order ids don't leak existence.
 
+### Authentication and security
+
+Sessions are opaque random tokens in an httpOnly, SameSite=Lax cookie; the server stores only a SHA-256 hash of the token (a database leak leaks nothing usable) and a Mongo TTL index expires them. No JWT by choice: opaque tokens are revocable server-side without inventing a denylist, and this app always has the database in front of it anyway. Passwords are bcrypt-hashed and capped at bcrypt's 72-byte input limit (it would otherwise truncate silently), and login performs a constant-shape hash comparison even for unknown emails. On top of SameSite, mutating requests verify the Origin header; CSV exports neutralize spreadsheet formula injection in free-text fields; basic security headers ship from `next.config.ts`.
+
 ### i18n
 
 UI is fully translated via next-intl with **en-US default and es-ES included**; adding a locale is one JSON file plus one config entry. Locale lives in a cookie (no URL prefixes). Money and dates format per locale via `Intl`. API error messages are English; the UI translates known error codes client-side and interpolates structured details (e.g. the max allowed amount).
@@ -140,7 +144,7 @@ UI is fully translated via next-intl with **en-US default and es-ES included**; 
 
 ## Data model and indexing at scale
 
-Collections: `users`, `sessions` (TTL-expired), `orders` (line items embedded; denormalized `netPaidMinor` + `entryCount`), `payments`, `audit_logs`. Indexes are created in code (`src/lib/db.ts`): unique email, session token + TTL, `(userId, createdAt)` and `(userId, dueDate)` on orders, `(orderId, createdAt)` on payments, and the unique partial idempotency index.
+Collections: `users`, `sessions` (TTL-expired), `orders` (line items embedded; denormalized `netPaidMinor` + `entryCount`), `payments`, `audit_logs`. Line items are embedded because they never exist independently of their order, are always read together with it, and become immutable once money is involved; payments are a separate collection because they grow without bound and carry their own indexes (including the idempotency one). Indexes are created in code (`src/lib/db.ts`): unique email, session token + TTL, `(userId, createdAt)` and `(userId, dueDate)` on orders, `(orderId, createdAt)` on payments, and the unique partial idempotency index.
 
 At scale, the derived-status filter would move into the query itself: `paid`/`partially_paid`/`pending` are expressible as range conditions over `(netPaidMinor, totalMinor)`, and `overdue` as `dueDate < today AND netPaidMinor < totalMinor`, backed by a compound index, with pagination on `(userId, createdAt)`.
 
