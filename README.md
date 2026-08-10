@@ -4,7 +4,7 @@ Take-home assignment for the CrossVal Full Stack Developer role.
 
 Create orders with line items, record full or partial payments against them, and track derived status and amounts due on a dashboard.
 
-- **Live URL:** `<DEPLOYED_URL>` (see [Deployment](#deployment))
+- **Live URL:** https://ordersandsettlements-bdsr.vercel.app
 - **Demo account:** `demo@example.com` / `demo-password-123` (seeded with orders in every status, in USD and AED, including a refund)
 
 ## Stack
