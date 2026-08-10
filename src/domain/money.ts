@@ -28,7 +28,7 @@ export function isCurrencyCode(value: string): value is CurrencyCode {
 }
 
 /** Upper bound to keep totals far away from Number.MAX_SAFE_INTEGER. */
-const MAX_MINOR_UNITS = 1_000_000_000_000; // e.g. 10 billion USD in cents
+export const MAX_MINOR_UNITS = 1_000_000_000_000; // e.g. 10 billion USD in cents
 
 const DECIMAL_RE = /^(\d+)(?:\.(\d+))?$/;
 

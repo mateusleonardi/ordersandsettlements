@@ -28,7 +28,12 @@ const amountInput = z.union([
 
 export const signupSchema = z.object({
   email: z.email("Invalid email address").toLowerCase(),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  // Upper bound matches bcrypt's 72-byte input limit (it would otherwise
+  // truncate silently) and keeps hashing cost bounded.
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(72, "Password must be at most 72 characters"),
 });
 
 export const loginSchema = z.object({

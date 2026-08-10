@@ -104,6 +104,17 @@ describe("order creation and computation", () => {
     expect((await readBody<ErrorBody>(zeroTotal)).error.message).toContain(
       "greater than zero",
     );
+
+    // quantity x max unit price would overflow safe integers.
+    const overflow = await createOrderVia(cookie, {
+      lineItems: [
+        { description: "W", quantity: 1_000_000, unitPrice: "10000000000" },
+      ],
+    });
+    expect(overflow.status).toBe(400);
+    expect((await readBody<ErrorBody>(overflow)).error.message).toContain(
+      "too large",
+    );
   });
 
   it("respects currency minor units (KWD has 3, JPY has 0)", async () => {
@@ -288,6 +299,34 @@ describe("idempotency", () => {
     expect(replayBody.order.amountPaid).toBe("400.00");
   });
 
+  it("keeps payment and refund idempotency keys independent", async () => {
+    const { cookie } = await signupUser();
+    const created = await createOrderVia(cookie);
+    const { order } = await readBody<{ order: OrderDto }>(created);
+
+    const key = "shared-key";
+    const pay = await payVia(cookie, order.id, "500", { idempotencyKey: key });
+    expect(pay.status).toBe(201);
+
+    // A refund reusing the same key must create a refund, not replay the payment.
+    const { POST: refundsPost } = await import(
+      "../../src/app/api/orders/[id]/refunds/route"
+    );
+    const refund = await refundsPost(
+      jsonRequest(
+        "POST",
+        `/api/orders/${order.id}/refunds`,
+        { amount: "200", date: "2030-01-02" },
+        { cookie, "Idempotency-Key": key },
+      ),
+      ctx({ id: order.id }),
+    );
+    expect(refund.status).toBe(201);
+    const refundBody = await readBody<{ refund: PaymentDto; order: OrderDto }>(refund);
+    expect(refundBody.refund.type).toBe("refund");
+    expect(refundBody.order.amountPaid).toBe("300.00");
+  });
+
   it("dedupes concurrent submissions sharing a key", async () => {
     const { cookie } = await signupUser();
     const created = await createOrderVia(cookie);
@@ -446,5 +485,25 @@ describe("CSV export", () => {
     expect(lines).toHaveLength(2);
     expect(lines[1]).toContain("In Range");
     expect(csv).not.toContain("Out of Range");
+  });
+
+  it("neutralizes spreadsheet formula injection in free-text fields", async () => {
+    const { cookie } = await signupUser();
+    await createOrderVia(cookie, {
+      customer: "=HYPERLINK(\"http://evil.test\",\"click\")",
+      dueDate: "2033-05-05",
+    });
+    const res = await routes.exportGet(
+      jsonRequest(
+        "GET",
+        "/api/orders/export?from=2033-01-01&to=2033-12-31",
+        undefined,
+        { cookie },
+      ),
+      undefined,
+    );
+    const csv = await res.text();
+    expect(csv).toContain("'=HYPERLINK");
+    expect(csv).not.toMatch(/(^|\n)[^,]*=HYPERLINK/);
   });
 });

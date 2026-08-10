@@ -1,6 +1,7 @@
 import { ClientSession, ObjectId } from "mongodb";
 import { DomainError, notFound } from "../domain/errors";
 import {
+  MAX_MINOR_UNITS,
   minorToDecimal,
   parseAmount,
   type CurrencyCode,
@@ -132,11 +133,21 @@ function buildLineItems(
 ): { lineItems: LineItemDoc[]; subtotalMinor: number } {
   const lineItems = input.map((li) => {
     const unitPriceMinor = parseAmount(li.unitPrice, currency);
+    const lineTotalMinor = li.quantity * unitPriceMinor;
+    // Guard each line before summing: quantity x max price can overflow the
+    // safe-integer range even when each factor is individually valid.
+    if (!Number.isSafeInteger(lineTotalMinor) || lineTotalMinor > MAX_MINOR_UNITS) {
+      throw new DomainError(
+        "VALIDATION_ERROR",
+        `Line total for "${li.description}" is too large`,
+        400,
+      );
+    }
     return {
       description: li.description,
       quantity: li.quantity,
       unitPriceMinor,
-      lineTotalMinor: li.quantity * unitPriceMinor,
+      lineTotalMinor,
     };
   });
   const subtotalMinor = lineItems.reduce((sum, li) => sum + li.lineTotalMinor, 0);
@@ -430,7 +441,9 @@ async function recordEntry(
   if (idempotencyKey) {
     const existing = await findByIdempotencyKey(
       collections,
+      user._id,
       orderId,
+      type,
       idempotencyKey,
     );
     if (existing) return existing;
@@ -499,7 +512,9 @@ async function recordEntry(
       // Lost an idempotency race: another request with the same key won.
       const existing = await findByIdempotencyKey(
         collections,
+        user._id,
         orderId,
+        type,
         idempotencyKey,
       );
       if (existing) return existing;
@@ -556,15 +571,19 @@ async function recordEntry(
 
 async function findByIdempotencyKey(
   collections: Awaited<ReturnType<typeof getMongo>>["collections"],
+  userId: ObjectId,
   orderId: ObjectId,
+  type: "payment" | "refund",
   idempotencyKey: string,
 ): Promise<RecordPaymentResult | null> {
   const existing = await collections.payments.findOne({
     orderId,
+    userId,
+    type,
     idempotencyKey,
   });
   if (!existing) return null;
-  const order = await collections.orders.findOne({ _id: orderId });
+  const order = await collections.orders.findOne({ _id: orderId, userId });
   if (!order) return null;
   return {
     order: orderToDto(order),
@@ -631,6 +650,9 @@ export async function exportOrdersCsv(
 }
 
 function csvEscape(value: string): string {
-  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-  return value;
+  // Formula-injection guard: a leading =, +, -, @ or tab would execute as a
+  // formula when the CSV is opened in a spreadsheet. Prefix with a quote.
+  const sanitized = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  if (/[",\n]/.test(sanitized)) return `"${sanitized.replace(/"/g, '""')}"`;
+  return sanitized;
 }

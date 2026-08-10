@@ -130,10 +130,12 @@ async function ensureIndexes(c: Collections): Promise<void> {
     c.orders.createIndex({ userId: 1, dueDate: 1 }),
     c.payments.createIndex({ orderId: 1, createdAt: 1 }),
     c.payments.createIndex({ userId: 1, createdAt: -1 }),
-    // Idempotency: the same (order, key) can only ever produce one payment.
-    // Partial: only payment docs that actually carry a key are constrained.
+    // Idempotency: the same (order, type, key) can only ever produce one
+    // entry. `type` is part of the key so a payment and a refund can never
+    // shadow each other's idempotency key on the same order. Partial: only
+    // docs that actually carry a key are constrained.
     c.payments.createIndex(
-      { orderId: 1, idempotencyKey: 1 },
+      { orderId: 1, type: 1, idempotencyKey: 1 },
       {
         unique: true,
         partialFilterExpression: { idempotencyKey: { $exists: true } },
