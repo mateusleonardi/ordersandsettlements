@@ -173,6 +173,124 @@ describe("order creation and computation", () => {
   });
 });
 
+describe("currency immutability", () => {
+  it("ignores currency on PATCH: not part of the update contract", async () => {
+    const { cookie } = await signupUser();
+    const created = await createOrderVia(cookie, {
+      currency: "KWD",
+      lineItems: [{ description: "Svc", quantity: 1, unitPrice: "100" }],
+    });
+    const { order } = await readBody<{ order: OrderDto }>(created);
+    expect(order.currency).toBe("KWD");
+
+    // Unknown keys are stripped; currency alone leaves nothing to update.
+    const currencyOnly = await routes.orderPatch(
+      jsonRequest("PATCH", `/api/orders/${order.id}`, { currency: "USD" }, { cookie }),
+      ctx({ id: order.id }),
+    );
+    expect(currencyOnly.status).toBe(400);
+
+    const mixed = await routes.orderPatch(
+      jsonRequest(
+        "PATCH",
+        `/api/orders/${order.id}`,
+        { customer: "Renamed", currency: "USD" },
+        { cookie },
+      ),
+      ctx({ id: order.id }),
+    );
+    expect(mixed.status).toBe(200);
+    const mixedBody = await readBody<{ order: OrderDto }>(mixed);
+    expect(mixedBody.order.currency).toBe("KWD");
+    expect(mixedBody.order.customer).toBe("Renamed");
+  });
+
+  it("validates payments against the order currency and stamps it on the entry", async () => {
+    const { cookie } = await signupUser();
+    const kwd = await createOrderVia(cookie, {
+      currency: "KWD",
+      lineItems: [{ description: "Svc", quantity: 1, unitPrice: "100" }],
+    });
+    const { order } = await readBody<{ order: OrderDto }>(kwd);
+
+    // 4 decimal places exceed KWD's 3.
+    const tooPrecise = await payVia(cookie, order.id, "10.1234");
+    expect(tooPrecise.status).toBe(400);
+
+    const ok = await payVia(cookie, order.id, "10.123");
+    expect(ok.status).toBe(201);
+    const okBody = await readBody<{ payment: PaymentDto }>(ok);
+    expect(okBody.payment.currency).toBe("KWD");
+    expect(okBody.payment.amount).toBe("10.123");
+
+    // JPY has no minor decimal places at all.
+    const jpy = await createOrderVia(cookie, {
+      currency: "JPY",
+      lineItems: [{ description: "Svc", quantity: 1, unitPrice: "1000" }],
+    });
+    const { order: jpyOrder } = await readBody<{ order: OrderDto }>(jpy);
+    const fractionalYen = await payVia(cookie, jpyOrder.id, "10.5");
+    expect(fractionalYen.status).toBe(400);
+  });
+});
+
+describe("request edge cases", () => {
+  it("handles malformed ids, bodies, filters and degenerate inputs", async () => {
+    const { cookie } = await signupUser();
+
+    // Non-ObjectId id: 404, never a 500.
+    const badId = await routes.orderGet(
+      jsonRequest("GET", "/api/orders/not-an-id", undefined, { cookie }),
+      ctx({ id: "not-an-id" }),
+    );
+    expect(badId.status).toBe(404);
+
+    // Malformed JSON body: 400 with a clear error.
+    const badJson = await routes.ordersPost(
+      new Request("http://test.local/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", cookie },
+        body: "{not json",
+      }),
+      undefined,
+    );
+    expect(badJson.status).toBe(400);
+    expect((await readBody<ErrorBody>(badJson)).error.message).toContain("JSON");
+
+    // Unknown status filter: 400.
+    const badStatus = await routes.ordersGet(
+      jsonRequest("GET", "/api/orders?status=bogus", undefined, { cookie }),
+      undefined,
+    );
+    expect(badStatus.status).toBe(400);
+
+    // Inverted CSV date range: 400.
+    const badRange = await routes.exportGet(
+      jsonRequest(
+        "GET",
+        "/api/orders/export?from=2031-12-31&to=2031-01-01",
+        undefined,
+        { cookie },
+      ),
+      undefined,
+    );
+    expect(badRange.status).toBe(400);
+
+    // Zero payment: 400 (minimum is one minor unit).
+    const created = await createOrderVia(cookie);
+    const { order } = await readBody<{ order: OrderDto }>(created);
+    const zeroPay = await payVia(cookie, order.id, "0");
+    expect(zeroPay.status).toBe(400);
+
+    // Empty PATCH: 400 (nothing to update).
+    const emptyPatch = await routes.orderPatch(
+      jsonRequest("PATCH", `/api/orders/${order.id}`, {}, { cookie }),
+      ctx({ id: order.id }),
+    );
+    expect(emptyPatch.status).toBe(400);
+  });
+});
+
 describe("sample scenario from the assignment", () => {
   it("runs 1000 total, pay 400, pay 600, reject extra 1", async () => {
     const { cookie } = await signupUser();
