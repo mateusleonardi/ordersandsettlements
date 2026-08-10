@@ -56,7 +56,7 @@ export function Dashboard() {
           <label className="flex items-center gap-2 text-sm text-slate-600">
             {t("filterLabel")}
             <select
-              className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              className="select-chevron rounded-md border border-slate-300 bg-white py-1.5 pl-2 pr-8 text-sm"
               value={filter}
               onChange={(e) => setFilter(e.target.value as OrderStatus | "")}
             >

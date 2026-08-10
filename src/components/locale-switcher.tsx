@@ -23,7 +23,7 @@ export function LocaleSwitcher() {
   return (
     <select
       aria-label="Language"
-      className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700"
+      className="select-chevron rounded-md border border-slate-300 bg-white py-1 pl-2 pr-7 text-sm text-slate-700"
       value={locale}
       disabled={isPending}
       onChange={(e) => change(e.target.value)}

@@ -60,6 +60,7 @@ export function FormError({ message }: { message: string | null }) {
 
 export const inputClass =
   "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none";
+export const selectClass = `${inputClass} select-chevron pr-9`;
 export const buttonClass =
   "inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-700 disabled:opacity-50";
 export const secondaryButtonClass =

@@ -18,6 +18,7 @@ import {
   formatMoney,
   inputClass,
   secondaryButtonClass,
+  selectClass,
 } from "./ui";
 
 interface LineDraft {
@@ -118,7 +119,7 @@ export function OrderForm() {
               {t("currency")}
             </span>
             <select
-              className={inputClass}
+              className={selectClass}
               value={currency}
               onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
             >
