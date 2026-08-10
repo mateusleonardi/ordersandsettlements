@@ -12,6 +12,7 @@ import {
   Money,
   StatusBadge,
   buttonClass,
+  dangerButtonClass,
   inputClass,
   secondaryButtonClass,
 } from "./ui";
@@ -130,7 +131,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
           </h1>
         </div>
         {order.editable ? (
-          <button type="button" onClick={remove} className={secondaryButtonClass}>
+          <button type="button" onClick={remove} className={dangerButtonClass}>
             {t("deleteOrder")}
           </button>
         ) : (

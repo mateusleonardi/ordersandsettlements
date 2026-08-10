@@ -15,9 +15,10 @@ import { useApiErrorMessage } from "./errors";
 import {
   FormError,
   buttonClass,
+  dangerButtonClass,
   formatMoney,
   inputClass,
-  secondaryButtonClass,
+  positiveButtonClass,
   selectClass,
 } from "./ui";
 
@@ -185,7 +186,7 @@ export function OrderForm() {
               </label>
               <button
                 type="button"
-                className={secondaryButtonClass}
+                className={dangerButtonClass}
                 disabled={lines.length === 1}
                 onClick={() =>
                   setLines((prev) => prev.filter((_, idx) => idx !== i))
@@ -197,7 +198,7 @@ export function OrderForm() {
           ))}
           <button
             type="button"
-            className={secondaryButtonClass}
+            className={positiveButtonClass}
             onClick={() => setLines((prev) => [...prev, { ...EMPTY_LINE }])}
           >
             {t("addLine")}
