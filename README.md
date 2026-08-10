@@ -119,13 +119,19 @@ UI is fully translated via next-intl with **en-US default and es-ES included**; 
 
 - One user = one tenant; no organizations or data sharing between accounts.
 - Customer is a plain string on the order (no customer entity), as allowed by the brief.
-- Order currency is chosen at creation and immutable; payments/refunds are always in the order's currency (no FX).
+- Order currency is chosen at creation and immutable; payments/refunds are always in the order's currency. **FX conversion and cross-currency aggregation are deliberately out of scope**: the dashboard is a per-order list so nothing ever sums across currencies, and conversion is a product decision (which rate source, at which date, mid-market or contractual) that deserves its own design rather than a hardcoded guess. The supported currency list is a single constant (`src/domain/money.ts`), chosen to exercise all three exponent cases (2, 3 and 0 decimal places).
+- Git workflow is a single `main` branch with small, descriptive commits. This is a solo take-home: feature branches and PRs would add ceremony with no reviewer on the other side. In a team setting I work branch + PR + CI gate (the linear history here is meant to be readable as a build log).
+- Order-creation idempotency replays return the original order without comparing the request payload; payment/refund replays DO compare (amount, date, note) and reject mismatches with 409, because for money movements a key reused with different parameters is a client bug worth surfacing. For order creation the UI generates a fresh UUID per intent, so a payload mismatch under the same key is not a reachable state through this client.
 - An order's total must be greater than zero (line items with price 0 are allowed as long as the order total is positive), since settlement semantics for a zero-total order are undefined.
+- The brief's "amount >= 0.01" minimum generalizes to **one minor unit of the order's currency**: 0.01 for USD/AED, 0.001 for KWD, 1 for JPY (a currency with no decimal places cannot receive a 0.01 payment).
+- An order past its due date with partial payments shows as `overdue`, not `partially_paid` (being late is the more actionable fact; the paid/due amounts remain visible on the same row). Full precedence: `paid` > `overdue` > `partially_paid` > `pending`.
+- Payments and refunds are immutable: no edit or delete endpoints. A wrong payment is corrected by a refund, which preserves the audit trail; deleting money history in a financial system is not a feature.
+- The CSV export's date range filters by **due date** (the settlement-relevant date), not creation date.
 - Due dates and payment dates are calendar dates (`YYYY-MM-DD`), not timestamps; overdue is evaluated in UTC. Per-user timezones are a production improvement, not assignment scope.
 - Payment dates are informational (they don't affect status); status uses the server clock.
 - Refunds are modeled as a payment entry of type `refund` (the brief's "negative payment" option) rather than a separate aggregate.
 - The dashboard lists all of a user's orders without pagination; fine for assignment-scale data, noted below for production.
-- Order editing after creation exists in the API (PATCH, while unpaid); the UI exposes create/delete and treats edit as API-level scope.
+- Order editing after creation exists in the API (PATCH, while unpaid); the UI exposes create/delete and treats edit as API-level scope. Deletion follows the same rule as editing: only while the order has no payments or refunds.
 - Seeding goes through the public API on purpose (works against any environment, exercises real validation); re-running it is a no-op.
 
 ## Data model and indexing at scale
